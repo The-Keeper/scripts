@@ -1,7 +1,9 @@
 import json
 import subprocess
 import os
+import tempfile
 from pathlib import Path
+from datetime import datetime, timedelta
 
 def select_chapters(chapters):
     """Display chapters and let user select which to include"""
@@ -24,34 +26,52 @@ def format_time(seconds):
     seconds = seconds % 60
     return f"{hours:02d}:{minutes:02d}:{seconds:06.3f}"
 
-def create_ffmpeg_concat_file(selected_chapters, input_file, output_file):
-    """Create FFmpeg concat command for audio segments"""
+def seconds_to_timestamp(seconds):
+    """Convert seconds to FFmpeg timestamp format (HH:MM:SS.MMM)"""
+    td = timedelta(seconds=seconds)
+    hours, remainder = divmod(td.seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    milliseconds = td.microseconds // 1000
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}.{milliseconds:03d}"
+
+def create_ffmpeg_metadata_file(selected_chapters):
+    """Create FFmpeg metadata file with chapters"""
+    metadata_content = ";FFMETADATA1\n"
     
-    # For audio-only processing, we'll use the concat demuxer approach which is more efficient
-    # First create a temporary file listing the segments
-    temp_file = "ffmpeg_concat_list.txt"
+    cumulative_time = 0.0
+    for i, chapter in enumerate(selected_chapters, 1):
+        start_time = cumulative_time
+        duration = chapter['end_time'] - chapter['start_time']
+        end_time = start_time + duration
+        
+        metadata_content += f"""
+[CHAPTER]
+TIMEBASE=1/1000
+START={int(start_time * 1000)}
+END={int(end_time * 1000)}
+title={chapter['title']}
+"""
+        cumulative_time = end_time
     
-    with open(temp_file, 'w', encoding='utf-8') as f:
-        for chapter in selected_chapters:
-            start = chapter['start_time']
-            end = chapter['end_time']
-            duration = end - start
-            f.write(f"file '{input_file}'\n")
-            f.write(f"inpoint {start}\n")
-            f.write(f"outpoint {end}\n")
-            f.write(f"duration {duration}\n")
+    # Create temporary metadata file
+    metadata_file = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8')
+    metadata_file.write(metadata_content)
+    metadata_file.close()
+    return metadata_file.name
+
+def create_ffmpeg_concat_file(selected_chapters, input_file):
+    """Create FFmpeg concat list file"""
+    concat_file = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8')
     
-    # Build FFmpeg command
-    cmd = [
-        'ffmpeg',
-        '-f', 'concat',
-        '-safe', '0',
-        '-i', temp_file,
-        '-c', 'copy',  # Stream copy for no re-encoding
-        output_file
-    ]
+    for chapter in selected_chapters:
+        start = chapter['start_time']
+        end = chapter['end_time']
+        concat_file.write(f"file '{input_file}'\n")
+        concat_file.write(f"inpoint {start}\n")
+        concat_file.write(f"outpoint {end}\n")
     
-    return cmd, temp_file
+    concat_file.close()
+    return concat_file.name
 
 def main():
     # Find audio and JSON files in current directory
@@ -94,10 +114,23 @@ def main():
     
     # Generate output filename
     input_stem = Path(audio_file).stem
-    output_file = f"concat_{input_stem}.{Path(audio_file).suffix[1:]}"
+    output_file = f"concat_{input_stem}.m4a"  # Using m4a for better metadata support
     
-    # Create FFmpeg command
-    cmd, temp_file = create_ffmpeg_concat_file(selected_chapters, audio_file, output_file)
+    # Create temporary files
+    concat_list_file = create_ffmpeg_concat_file(selected_chapters, audio_file)
+    metadata_file = create_ffmpeg_metadata_file(selected_chapters)
+    
+    # Build FFmpeg command
+    cmd = [
+        'ffmpeg',
+        '-f', 'concat',
+        '-safe', '0',
+        '-i', concat_list_file,
+        '-i', metadata_file,
+        '-map_metadata', '1',
+        '-c', 'copy',
+        output_file
+    ]
     
     print("\nRunning FFmpeg command:")
     print(' '.join(cmd))
@@ -105,15 +138,18 @@ def main():
     # Run FFmpeg
     try:
         subprocess.run(cmd, check=True)
-        print(f"\nSuccessfully created concatenated audio: {output_file}")
+        print(f"\nSuccessfully created concatenated audio with chapters: {output_file}")
     except subprocess.CalledProcessError as e:
         print(f"\nError running FFmpeg: {e}")
     except FileNotFoundError:
         print("\nFFmpeg not found. Please ensure FFmpeg is installed and in your PATH.")
     finally:
-        # Clean up temporary file
-        if os.path.exists(temp_file):
-            os.remove(temp_file)
+        # Clean up temporary files
+        for f in [concat_list_file, metadata_file]:
+            try:
+                os.remove(f)
+            except:
+                pass
 
 if __name__ == "__main__":
     main()
