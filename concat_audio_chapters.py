@@ -60,13 +60,16 @@ title={chapter['title']}
     return metadata_file.name
 
 def create_ffmpeg_concat_file(selected_chapters, input_file):
-    """Create FFmpeg concat list file"""
+    """Create FFmpeg concat list file with absolute paths"""
     concat_file = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8')
+    
+    # Use absolute path to ensure FFmpeg can find the file
+    abs_input_path = os.path.abspath(input_file)
     
     for chapter in selected_chapters:
         start = chapter['start_time']
         end = chapter['end_time']
-        concat_file.write(f"file '{input_file}'\n")
+        concat_file.write(f"file '{abs_input_path}'\n")  # ← Absolute path here
         concat_file.write(f"inpoint {start}\n")
         concat_file.write(f"outpoint {end}\n")
     
@@ -114,7 +117,7 @@ def main():
     
     # Generate output filename
     input_stem = Path(audio_file).stem
-    output_file = f"concat_{input_stem}.m4a"  # Using m4a for better metadata support
+    output_file = f"concat_{input_stem}.mka"  # Using mka for better metadata support
     
     # Create temporary files
     concat_list_file = create_ffmpeg_concat_file(selected_chapters, audio_file)
