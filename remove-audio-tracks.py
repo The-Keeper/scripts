@@ -41,12 +41,12 @@ def remux_to_new_file(mkv_file: str, track_ids: List[int], dry_run: bool = False
     output_file = os.path.join(out_dir, os.path.basename(mkv_file))
 
     # Build exclude tracks argument for all track types
-    exclude_tracks = ",".join(f"!{tid}" for tid in track_ids)
+    exclude_tracks = ",".join(f"{tid}" for tid in track_ids)
 
-    cmd = ["mkvmerge", "-o", output_file, "--audio-tracks", exclude_tracks, mkv_file]
+    cmd = ["mkvmerge", "-o", output_file, "--audio-tracks", f"!{exclude_tracks}", mkv_file]
 
     if dry_run:
-        print(f"[DRY RUN] Would remux {mkkv_file} to {output_file}, excluding tracks {track_ids}")
+        print(f"[DRY RUN] Would remux {mkv_file} to {output_file}, excluding tracks {track_ids}")
         print("COMMAND:")
         print(shlex.join(cmd))
         return True
