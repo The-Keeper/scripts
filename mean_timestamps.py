@@ -1,5 +1,6 @@
 import re
 import statistics
+import sys
 from collections import Counter
 
 def parse_timestamp(ts):
@@ -142,9 +143,15 @@ def analyze_sync_discrepancies(scene_changes):
         print("No valid scene changes to analyze")
 
 def main():
-    filename = input("Enter the filename containing timestamps: ").strip()
+    if len(sys.argv) != 2:
+        print("Usage: python audio_sync_analyzer.py <filename>")
+        print("Example: python audio_sync_analyzer.py timestamps.txt")
+        sys.exit(1)
+    
+    filename = sys.argv[1]
     
     try:
+        print(f"Reading timestamps from: {filename}")
         scene_changes = read_timestamps_from_file(filename)
         
         if not scene_changes:
@@ -155,13 +162,10 @@ def main():
         
     except FileNotFoundError:
         print(f"Error: File '{filename}' not found.")
+        sys.exit(1)
     except Exception as e:
         print(f"Error: {e}")
-
-# Alternative: Hardcode filename for quick testing
-# if __name__ == "__main__":
-#     scene_changes = read_timestamps_from_file("timestamps.txt")
-#     analyze_sync_discrepancies(scene_changes)
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
